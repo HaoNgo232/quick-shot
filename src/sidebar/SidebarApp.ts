@@ -269,8 +269,22 @@ export default async function initSidebarApp() {
     }
   })
 
+  const isWindows = typeof navigator !== 'undefined' && (
+    navigator.userAgent.includes('Windows') ||
+    (navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData?.platform === 'Windows' ||
+    navigator.platform?.includes('Win')
+  )
+  const defaultInstallCmd = isWindows
+    ? `powershell -ExecutionPolicy Bypass -File .\\install-native-host.ps1 -ExtensionId ${chrome.runtime.id}`
+    : `./install-native-host.sh`
+
+  const cmdInstallHost = document.getElementById('cmd-install-host')
+  if (cmdInstallHost) {
+    cmdInstallHost.textContent = defaultInstallCmd
+  }
+
   btnCopyInstallCmd?.addEventListener('click', async () => {
-    const cmd = './install-native-host.sh'
+    const cmd = cmdInstallHost?.textContent?.trim() || defaultInstallCmd
     await captureEngine.copyTextArtifact(cmd)
     notify('Command copied to clipboard')
     const origHtml = btnCopyInstallCmd.innerHTML

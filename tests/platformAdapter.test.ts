@@ -3,17 +3,19 @@ import { spawnSync, spawn } from 'child_process'
 import * as path from 'path'
 
 const HOST_SCRIPT = path.resolve(__dirname, '../native-host/quick_screen_host.py')
+const PYTHON_CMD = process.platform === 'win32' ? 'python' : 'python3'
+const HOST_DIR = path.dirname(HOST_SCRIPT).replace(/\\/g, '/')
 
 describe('PlatformAdapter Unit & Seam Verification', () => {
   it('LinuxAdapter resolves storage dir to /tmp/quick-shot', () => {
     const pyCode = `
 import sys
-sys.path.insert(0, '${path.dirname(HOST_SCRIPT)}')
+sys.path.insert(0, '${HOST_DIR}')
 from quick_screen_host import LinuxAdapter
 adapter = LinuxAdapter()
 print(adapter.get_storage_dir())
 `
-    const res = spawnSync('python3', ['-c', pyCode], { encoding: 'utf-8' })
+    const res = spawnSync(PYTHON_CMD, ['-c', pyCode], { encoding: 'utf-8' })
     expect(res.status).toBe(0)
     expect(res.stdout.trim()).toBe('/tmp/quick-shot')
   })
@@ -21,21 +23,21 @@ print(adapter.get_storage_dir())
   it('WindowsAdapter resolves storage dir based on TEMP environment variable', () => {
     const pyCode = `
 import sys, os
-sys.path.insert(0, '${path.dirname(HOST_SCRIPT)}')
+sys.path.insert(0, '${HOST_DIR}')
 from quick_screen_host import WindowsAdapter
 os.environ['TEMP'] = 'C:\\\\Users\\\\Test\\\\AppData\\\\Local\\\\Temp'
 adapter = WindowsAdapter()
 print(adapter.get_storage_dir())
 `
-    const res = spawnSync('python3', ['-c', pyCode], { encoding: 'utf-8' })
+    const res = spawnSync(PYTHON_CMD, ['-c', pyCode], { encoding: 'utf-8' })
     expect(res.status).toBe(0)
-    expect(res.stdout.trim()).toBe('C:\\Users\\Test\\AppData\\Local\\Temp/quick-shot'.replace('/', path.sep))
+    expect(res.stdout.trim()).toBe(path.join('C:\\Users\\Test\\AppData\\Local\\Temp', 'quick-shot'))
   })
 
   it('get_platform_adapter selects WindowsAdapter on win32 and LinuxAdapter on linux', () => {
     const pyCode = `
 import sys
-sys.path.insert(0, '${path.dirname(HOST_SCRIPT)}')
+sys.path.insert(0, '${HOST_DIR}')
 from quick_screen_host import get_platform_adapter, WindowsAdapter, LinuxAdapter
 
 sys.platform = 'win32'
@@ -45,13 +47,13 @@ sys.platform = 'linux'
 assert isinstance(get_platform_adapter(), LinuxAdapter)
 print('OK')
 `
-    const res = spawnSync('python3', ['-c', pyCode], { encoding: 'utf-8' })
+    const res = spawnSync(PYTHON_CMD, ['-c', pyCode], { encoding: 'utf-8' })
     expect(res.status).toBe(0)
     expect(res.stdout.trim()).toBe('OK')
   })
 
   it('native host python script runs directly and responds to ping', async () => {
-    const proc = spawn('python3', [HOST_SCRIPT], {
+    const proc = spawn(PYTHON_CMD, [HOST_SCRIPT], {
       stdio: ['pipe', 'pipe', 'inherit']
     })
 

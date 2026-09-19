@@ -10,11 +10,24 @@ const HOST_PATH = fs.existsSync(DEFAULT_BIN)
   ? DEFAULT_BIN
   : path.resolve(__dirname, '../native-host/quick_screen_host.py')
 
-describe('Native Messaging Host Bridge', () => {
-  it('responds to ping with status ok and pong true', async () => {
-    const proc = spawn(HOST_PATH, [], {
+const STORAGE_DIR = process.platform === 'win32'
+  ? path.join(process.env.TEMP || os.tmpdir(), 'quick-shot')
+  : '/tmp/quick-shot'
+
+function startHost() {
+  if (process.platform === 'win32') {
+    return spawn('python', [HOST_PATH], {
       stdio: ['pipe', 'pipe', 'inherit']
     })
+  }
+  return spawn(HOST_PATH, [], {
+    stdio: ['pipe', 'pipe', 'inherit']
+  })
+}
+
+describe('Native Messaging Host Bridge', () => {
+  it('responds to ping with status ok and pong true', async () => {
+    const proc = startHost()
 
     const msg = JSON.stringify({ action: 'ping' })
     const msgBuffer = Buffer.from(msg, 'utf-8')
@@ -36,10 +49,8 @@ describe('Native Messaging Host Bridge', () => {
     expect(response.pong).toBe(true)
   })
 
-  it('saves base64 png directly to /tmp/quick-shot', async () => {
-    const proc = spawn(HOST_PATH, [], {
-      stdio: ['pipe', 'pipe', 'inherit']
-    })
+  it('saves base64 png directly to storage directory', async () => {
+    const proc = startHost()
 
     const testFilename = 'test-suite-capture.png'
     // 1x1 transparent PNG base64
@@ -66,22 +77,22 @@ describe('Native Messaging Host Bridge', () => {
 
     proc.kill()
 
+    const expectedPath = path.join(STORAGE_DIR, testFilename)
     expect(response.status).toBe('ok')
-    expect(response.absolutePath).toBe(`/tmp/quick-shot/${testFilename}`)
-    expect(fs.existsSync(`/tmp/quick-shot/${testFilename}`)).toBe(true)
+    expect(response.absolutePath).toBe(expectedPath)
+    expect(fs.existsSync(expectedPath)).toBe(true)
 
     // Cleanup test artifact
-    fs.unlinkSync(`/tmp/quick-shot/${testFilename}`)
+    fs.unlinkSync(expectedPath)
   })
 
   it('handles copy_image action successfully', async () => {
-    const testFile = '/tmp/quick-shot/test-copy-img.png'
-    fs.mkdirSync('/tmp/quick-shot', { recursive: true })
-    fs.writeFileSync(testFile, Buffer.from('fake-png'))
+    const testFile = path.join(STORAGE_DIR, 'test-copy-img.png')
+    fs.mkdirSync(STORAGE_DIR, { recursive: true })
+    const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+    fs.writeFileSync(testFile, Buffer.from(pngBase64, 'base64'))
 
-    const proc = spawn(HOST_PATH, [], {
-      stdio: ['pipe', 'pipe', 'inherit']
-    })
+    const proc = startHost()
 
     const msg = JSON.stringify({ action: 'copy_image', filepath: testFile })
     const msgBuffer = Buffer.from(msg, 'utf-8')
@@ -106,13 +117,11 @@ describe('Native Messaging Host Bridge', () => {
   })
 
   it('handles read_file action returning base64 dataUrl', async () => {
-    const testFile = '/tmp/quick-shot/test-read-file.png'
-    fs.mkdirSync('/tmp/quick-shot', { recursive: true })
+    const testFile = path.join(STORAGE_DIR, 'test-read-file.png')
+    fs.mkdirSync(STORAGE_DIR, { recursive: true })
     fs.writeFileSync(testFile, Buffer.from('quick-shot-test-data'))
 
-    const proc = spawn(HOST_PATH, [], {
-      stdio: ['pipe', 'pipe', 'inherit']
-    })
+    const proc = startHost()
 
     const msg = JSON.stringify({ action: 'read_file', filepath: testFile })
     const msgBuffer = Buffer.from(msg, 'utf-8')
@@ -137,14 +146,12 @@ describe('Native Messaging Host Bridge', () => {
   })
 
   it('handles read_file_chunk action returning chunked data', async () => {
-    const testFile = '/tmp/quick-shot/test-chunk-file.png'
-    fs.mkdirSync('/tmp/quick-shot', { recursive: true })
+    const testFile = path.join(STORAGE_DIR, 'test-chunk-file.png')
+    fs.mkdirSync(STORAGE_DIR, { recursive: true })
     const content = Buffer.from('hello-world-quick-shot-chunked-data')
     fs.writeFileSync(testFile, content)
 
-    const proc = spawn(HOST_PATH, [], {
-      stdio: ['pipe', 'pipe', 'inherit']
-    })
+    const proc = startHost()
 
     const msg = JSON.stringify({ action: 'read_file_chunk', filepath: testFile, offset: 0, chunkSize: 11 })
     const msgBuffer = Buffer.from(msg, 'utf-8')

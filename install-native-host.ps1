@@ -1,3 +1,7 @@
+param(
+    [string]$ExtensionId = ""
+)
+
 # PowerShell installer for quick-shot Native Messaging Host on Windows
 $ErrorActionPreference = "Stop"
 
@@ -19,15 +23,63 @@ Copy-Item (Join-Path $scriptDir "native-host\quick-screen-host.bat") -Destinatio
 $batPath = Join-Path $installDir "quick-screen-host.bat"
 $manifestPath = Join-Path $installDir "com.quickscreen.host.json"
 
+# Base known IDs
+$allowedOrigins = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+[void]$allowedOrigins.Add("chrome-extension://lfjkmkbgdkejeefmjkcgakkeeajkccdo/")
+[void]$allowedOrigins.Add("chrome-extension://gnamflndgdnmkpjnkbocgkffdkmmbieh/")
+[void]$allowedOrigins.Add("chrome-extension://lmpelmbldegmgokigphaahjdbcnkmcci/")
+
+if ($ExtensionId -and $ExtensionId.Trim() -ne "") {
+    $cleanId = $ExtensionId.Trim().TrimEnd('/')
+    if ($cleanId -notlike "chrome-extension://*") {
+        $cleanId = "chrome-extension://$cleanId/"
+    } else {
+        $cleanId = "$cleanId/"
+    }
+    [void]$allowedOrigins.Add($cleanId)
+    Write-Host "[*] Added explicit extension origin: $cleanId"
+}
+
+# Auto-detect extension IDs from browser preferences
+Write-Host "[*] Auto-detecting extension IDs from browser profiles..."
+$browserBases = @(
+    (Join-Path $env:LOCALAPPDATA "Google\Chrome\User Data"),
+    (Join-Path $env:LOCALAPPDATA "Microsoft\Edge\User Data"),
+    (Join-Path $env:LOCALAPPDATA "BraveSoftware\Brave-Browser\User Data"),
+    (Join-Path $env:LOCALAPPDATA "Chromium\User Data")
+)
+
+foreach ($base in $browserBases) {
+    if (Test-Path $base) {
+        $prefFiles = Get-ChildItem -Path $base -Filter "*Preferences" -Recurse -Depth 2 -File -ErrorAction SilentlyContinue
+        foreach ($file in $prefFiles) {
+            try {
+                $content = Get-Content -Path $file.FullName -Raw -ErrorAction SilentlyContinue
+                if ($content -and ($content -match "quick-shot" -or $content -match "quick-screen")) {
+                    $json = $content | ConvertFrom-Json -ErrorAction SilentlyContinue
+                    if ($json.extensions.settings) {
+                        $json.extensions.settings.PSObject.Properties | ForEach-Object {
+                            $valStr = ($_.Value | ConvertTo-Json -Compress -Depth 3)
+                            if ($valStr -match "quick-shot" -or $valStr -match "quick-screen") {
+                                $detectedOrigin = "chrome-extension://$($_.Name)/"
+                                if ($allowedOrigins.Add($detectedOrigin)) {
+                                    Write-Host "    [+] Detected extension ID: $($_.Name)" -ForegroundColor Green
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch {}
+        }
+    }
+}
+
 $manifest = @{
     name = "com.quickscreen.host"
     description = "quick-shot Native Messaging Host for automatic saving to temp"
     path = $batPath
     type = "stdio"
-    allowed_origins = @(
-        "chrome-extension://lfjkmkbgdkejeefmjkcgakkeeajkccdo/",
-        "chrome-extension://gnamflndgdnmkpjnkbocgkffdkmmbieh/"
-    )
+    allowed_origins = @($allowedOrigins)
 }
 
 $manifestJson = $manifest | ConvertTo-Json -Depth 5
