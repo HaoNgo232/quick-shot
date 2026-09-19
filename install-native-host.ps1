@@ -14,9 +14,9 @@ if (!(Test-Path $installDir)) {
 
 Write-Host "[*] Copying host files to $installDir..."
 Copy-Item (Join-Path $scriptDir "native-host\quick_screen_host.py") -Destination $installDir -Force
-Copy-Item (Join-Path $scriptDir "native-host\quick-shot-host.bat") -Destination $installDir -Force
+Copy-Item (Join-Path $scriptDir "native-host\quick-screen-host.bat") -Destination $installDir -Force
 
-$batPath = Join-Path $installDir "quick-shot-host.bat"
+$batPath = Join-Path $installDir "quick-screen-host.bat"
 $manifestPath = Join-Path $installDir "com.quickscreen.host.json"
 
 $manifest = @{
@@ -51,7 +51,7 @@ foreach ($regPath in $browsers) {
         Set-ItemProperty -Path $regPath -Name "(Default)" -Value $manifestPath
         Write-Host "    [+] Registered for $(Split-Path (Split-Path $parent -Parent) -Leaf)" -ForegroundColor Green
     } catch {
-        Write-Warning "Failed to register at $regPath: $_"
+        Write-Warning "Failed to register at $($regPath): $_"
     }
 }
 
